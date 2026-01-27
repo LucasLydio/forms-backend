@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AuthProvider {
+  local
+  google
+
+  @@map("auth_provider")
+}
+
+enum UserRole {
+  admin
+  creator
+  common
+
+  @@map("user_role")
+}
+
+enum QuestionType {
+  text
+  checkbox
+  radio
+
+  @@map("question_type")
+}
+
+enum SubmissionStatus {
+  in_progress
+  submitted
+
+  @@map("submission_status")
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String
+  email        String       @unique
+  passwordHash String?      @map("password_hash")
+  provider     AuthProvider @default(local)
+  googleId     String?      @unique @map("google_id")
+  role         UserRole     @default(common)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  refreshTokens RefreshToken[]
+
+  // Forms
+  formsOwned   Form[]           @relation("UserOwnsForms")
+  submissions  FormSubmission[] @relation("UserSubmissions")
+
+  @@map("users")
+  @@index([provider])
+  @@index([createdAt])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+model Form {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerUserId String   @db.Uuid @map("owner_user_id")
+  title       String
+  description String?
+  isPublished Boolean  @default(false) @map("is_published")
+  publishedAt DateTime? @map("published_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner       User             @relation("UserOwnsForms", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  questions   Question[]
+  submissions FormSubmission[]
+
+  @@map("forms")
+  @@index([ownerUserId])
+  @@index([isPublished])
+  @@index([publishedAt])
+}
+
+model Question {
+  id         String       @id @default(uuid()) @db.Uuid
+  formId     String       @db.Uuid @map("form_id")
+  prompt     String
+  type       QuestionType
+  isRequired Boolean      @default(false) @map("is_required")
+  orderIndex Int          @default(0) @map("order_index")
+  minChoices Int?         @map("min_choices")
+  maxChoices Int?         @map("max_choices")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  form    Form            @relation(fields: [formId], references: [id], onDelete: Cascade)
+  options QuestionOption[]
+  answers Answer[]
+
+  @@map("questions")
+  @@index([formId])
+  @@index([orderIndex])
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid()) @db.Uuid
+  questionId String   @db.Uuid @map("question_id")
+  label      String
+  value      String
+  orderIndex Int      @default(0) @map("order_index")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  chosenIn AnswerSelectedOption[]
+
+  @@map("question_options")
+  @@index([questionId])
+  @@index([orderIndex])
+  @@unique([questionId, value], map: "uq_question_option_value")
+}
+
+model FormSubmission {
+  id               String           @id @default(uuid()) @db.Uuid
+  formId           String           @db.Uuid @map("form_id")
+  respondentUserId String           @db.Uuid @map("respondent_user_id")
+  status           SubmissionStatus @default(in_progress)
+  startedAt        DateTime         @default(now()) @map("started_at")
+  submittedAt      DateTime?        @map("submitted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  form       Form   @relation(fields: [formId], references: [id], onDelete: Cascade)
+  respondent User   @relation("UserSubmissions", fields: [respondentUserId], references: [id], onDelete: Cascade)
+  answers    Answer[]
+
+  @@map("form_submissions")
+  @@index([formId])
+  @@index([respondentUserId])
+  @@index([status])
+  @@unique([formId, respondentUserId, status], map: "uq_one_in_progress_per_user_form")
+}
+
+model Answer {
+  id           String  @id @default(uuid()) @db.Uuid
+  submissionId String  @db.Uuid @map("submission_id")
+  questionId   String  @db.Uuid @map("question_id")
+  textValue    String? @map("text_value")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  submission FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  question   Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOptions AnswerSelectedOption[]
+
+  @@map("answers")
+  @@index([submissionId])
+  @@index([questionId])
+  @@unique([submissionId, questionId], map: "uq_answer_per_question_per_submission")
+}
+
+model AnswerSelectedOption {
+  id       String @id @default(uuid()) @db.Uuid
+  answerId String @db.Uuid @map("answer_id")
+  optionId String @db.Uuid @map("option_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  answer Answer         @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  option QuestionOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@map("answer_selected_options")
+  @@index([answerId])
+  @@index([optionId])
+  @@unique([answerId, optionId], map: "uq_answer_option")
+}
