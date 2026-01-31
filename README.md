@@ -1,6 +1,6 @@
 # Forms Backend
 
-This repository contains the backend service for the Forms-Lite project: a modular, TypeScript-based Express API that handles authentication, form management, and submission processing. It's written to be simple to extend and to integrate with the frontend in the same workspace.
+This repository contains the backend service for the Forms project: a modular, TypeScript-based Express API that handles authentication, form management, and submission processing. It's written to be simple to extend and to integrate with the frontend in the same workspace.
 
 ---  
 
