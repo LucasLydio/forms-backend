@@ -6,8 +6,6 @@ import type {
   AddQuestionDTO,
   CreateFormDTO,
   PublishFormDTO,
-  ReorderOptionsDTO,
-  ReorderQuestionsDTO,
   UpdateFormDTO,
   UpdateOptionDTO,
   UpdateQuestionDTO,
@@ -354,68 +352,6 @@ async listForUser(userId: string, role: UserRole) {
     });
 
     return opt;
-  }
-
-  async reorderQuestions(formId: string, userId: string, role: UserRole, dto: ReorderQuestionsDTO) {
-    if (!canManageForm(role)) throw forbidden("Only admin/creator can reorder questions");
-
-    const form = await assertCanAccessForm({ formId, userId, role });
-
-    const existing = await prisma.question.findMany({
-      where: { formId: form.id },
-      select: { id: true },
-    });
-
-    const existingIds = new Set(existing.map((q: any) => q.id));
-    for (const qid of dto.orderedQuestionIds) {
-      if (!existingIds.has(qid)) throw badRequest("orderedQuestionIds contains question not in this form");
-    }
-
-    // Update in a transaction
-    await prisma.$transaction(
-      dto.orderedQuestionIds.map((qid, idx) =>
-        prisma.question.update({
-          where: { id: qid },
-          data: { orderIndex: idx },
-        })
-      )
-    );
-
-    return { success: true };
-  }
-
-  async reorderOptions(questionId: string, userId: string, role: UserRole, dto: ReorderOptionsDTO) {
-    if (!canManageForm(role)) throw forbidden("Only admin/creator can reorder options");
-
-    const question = await prisma.question.findUnique({
-      where: { id: questionId },
-      select: { id: true, type: true, formId: true },
-    });
-    if (!question) throw notFound("Question not found");
-    if (question.type === "text") throw badRequest("Text questions do not have options");
-
-    await assertCanAccessForm({ formId: question.formId, userId, role });
-
-    const existing = await prisma.questionOption.findMany({
-      where: { questionId },
-      select: { id: true },
-    });
-
-    const existingIds = new Set(existing.map((o: any) => o.id));
-    for (const oid of dto.orderedOptionIds) {
-      if (!existingIds.has(oid)) throw badRequest("orderedOptionIds contains option not in this question");
-    }
-
-    await prisma.$transaction(
-      dto.orderedOptionIds.map((oid, idx) =>
-        prisma.questionOption.update({
-          where: { id: oid },
-          data: { orderIndex: idx },
-        })
-      )
-    );
-
-    return { success: true };
   }
 
   async updateQuestion(questionId: string, userId: string, role: UserRole, dto: UpdateQuestionDTO) {

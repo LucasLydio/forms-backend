@@ -7,8 +7,6 @@ import {
   addQuestionSchema,
   createFormSchema,
   publishFormSchema,
-  reorderOptionsSchema,
-  reorderQuestionsSchema,
   updateFormSchema,
   updateOptionSchema,
   updateQuestionSchema,
@@ -18,15 +16,15 @@ import { z } from "zod";
 
 export const formsRoutes = Router();
 
-const questionIdParamSchema = z.object({ id: z.string().uuid() }).strict(); // /questions/:id
-const optionIdParamSchema = z.object({ id: z.string().uuid() }).strict(); // /options/:id
+const questionIdParamSchema = z.object({ id: z.string().uuid() }).strict(); 
+const optionIdParamSchema = z.object({ id: z.string().uuid() }).strict(); 
 
 const formIdParamSchema = uuidParamSchema;
 
-// All forms endpoints require auth (common users can still list published + view published)
+
 formsRoutes.use(requireAuth);
 
-// CRUD forms
+
 formsRoutes.post("/", validate(createFormSchema), formsController.create);
 formsRoutes.get("/", formsController.list);
 formsRoutes.get("/:id", validate(formIdParamSchema, "params"), formsController.getById);
@@ -39,7 +37,7 @@ formsRoutes.patch(
 );
 formsRoutes.delete("/:id", validate(formIdParamSchema, "params"), formsController.remove);
 
-// Questions
+
 formsRoutes.post(
   "/:id/questions",
   validate(formIdParamSchema, "params"),
@@ -47,7 +45,7 @@ formsRoutes.post(
   formsController.addQuestion
 );
 
-// Options (route in same router for convenience)
+
 formsRoutes.post(
   "/questions/:id/options",
   validate(questionIdParamSchema, "params"),
@@ -55,22 +53,7 @@ formsRoutes.post(
   formsController.addOption
 );
 
-// Reorder
-formsRoutes.patch(
-  "/:id/questions/reorder",
-  validate(formIdParamSchema, "params"),
-  validate(reorderQuestionsSchema),
-  formsController.reorderQuestions
-);
 
-formsRoutes.patch(
-  "/questions/:id/options/reorder",
-  validate(questionIdParamSchema, "params"),
-  validate(reorderOptionsSchema),
-  formsController.reorderOptions
-);
-
-// Update/Delete Question
 formsRoutes.patch(
   "/questions/:id",
   validate(questionIdParamSchema, "params"),
@@ -84,7 +67,7 @@ formsRoutes.delete(
   formsController.deleteQuestion
 );
 
-// Update/Delete Option
+
 formsRoutes.patch(
   "/options/:id",
   validate(optionIdParamSchema, "params"),

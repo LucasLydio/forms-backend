@@ -6,8 +6,6 @@ import type {
   AddQuestionDTO,
   CreateFormDTO,
   PublishFormDTO,
-  ReorderOptionsDTO,
-  ReorderQuestionsDTO,
   UpdateFormDTO,
   UpdateOptionDTO,
   UpdateQuestionDTO,
@@ -129,38 +127,6 @@ export class FormsController {
       message: "Option added",
     };
     return res.status(201).json(payload);
-  };
-
-  reorderQuestions = async (req: Request, res: Response) => {
-    const userId = req.user!.id;
-    const role = req.user!.role as UserRole;
-    const { id } = req.params as { id: string }; // form id
-    const dto = req.body as ReorderQuestionsDTO;
-
-    const result = await formsService.reorderQuestions(id, userId, role, dto);
-
-    const payload: SuccessResponse<typeof result> = {
-      success: true,
-      data: result,
-      message: "Questions reordered",
-    };
-    return res.status(200).json(payload);
-  };
-
-  reorderOptions = async (req: Request, res: Response) => {
-    const userId = req.user!.id;
-    const role = req.user!.role as UserRole;
-    const { id } = req.params as { id: string }; // question id
-    const dto = req.body as ReorderOptionsDTO;
-
-    const result = await formsService.reorderOptions(id, userId, role, dto);
-
-    const payload: SuccessResponse<typeof result> = {
-      success: true,
-      data: result,
-      message: "Options reordered",
-    };
-    return res.status(200).json(payload);
   };
 
   updateQuestion = async (req: Request, res: Response) => {

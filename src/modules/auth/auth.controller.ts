@@ -105,6 +105,7 @@ export class AuthController {
     const dto = req.body as RefreshDTO;
 
     const cookieToken = req.cookies?.[env.COOKIE_NAME] as string | undefined;
+    console.log('Aqui', cookieToken)
     const refreshToken = cookieToken || dto.refreshToken;
 
     // If missing, return 401 with standard error shape
@@ -117,6 +118,7 @@ export class AuthController {
         domain: env.COOKIE_DOMAIN || undefined,
         path: env.COOKIE_PATH,
       });
+      console.log('erro')
 
       throw unauthorized("Missing refresh token");
     }
@@ -132,7 +134,8 @@ export class AuthController {
         message: "Token refreshed",
       });
     } catch (err) {
-      // If refresh token is bad/revoked/expired, clear cookie and rethrow
+
+      console.log(err)
       res.clearCookie(env.COOKIE_NAME, {
         httpOnly: true,
         secure: env.COOKIE_SECURE,

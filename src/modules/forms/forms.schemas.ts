@@ -39,7 +39,7 @@ export const addQuestionSchema = z
   })
   .strict()
   .superRefine((v, ctx) => {
-    // For text questions, min/max choices don't apply
+    
     if (v.type === "text") {
       if (v.minChoices !== undefined || v.maxChoices !== undefined) {
         ctx.addIssue({
@@ -51,7 +51,7 @@ export const addQuestionSchema = z
       return;
     }
 
-    // checkbox/radio: allow min/max but keep consistency
+    
     if (v.minChoices !== undefined && v.maxChoices !== undefined && v.minChoices > v.maxChoices) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -61,7 +61,7 @@ export const addQuestionSchema = z
     }
 
     if (v.type === "radio") {
-      // radio should be exactly 1 choice effectively
+      
       if (v.minChoices !== undefined && v.minChoices !== 1) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -87,19 +87,6 @@ export const addOptionSchema = z
   })
   .strict();
 
-export const reorderQuestionsSchema = z
-  .object({
-    // array of question ids in the desired order (0..n-1)
-    orderedQuestionIds: z.array(z.string().uuid()).min(1),
-  })
-  .strict();
-
-export const reorderOptionsSchema = z
-  .object({
-    orderedOptionIds: z.array(z.string().uuid()).min(1),
-  })
-  .strict();
-
 export const updateQuestionSchema = z
   .object({
     prompt: z.string().min(1).max(2000).optional().transform((v) => (v ? v.trim() : v)),
@@ -111,7 +98,7 @@ export const updateQuestionSchema = z
   })
   .strict()
   .superRefine((v, ctx) => {
-    // If type is explicitly "text", min/max must not be sent
+    
     if (v.type === "text") {
       if (v.minChoices !== undefined || v.maxChoices !== undefined) {
         ctx.addIssue({
@@ -122,7 +109,7 @@ export const updateQuestionSchema = z
       }
     }
 
-    // If both provided, min must be <= max
+    
     if (v.minChoices !== undefined && v.maxChoices !== undefined && v.minChoices > v.maxChoices) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -131,7 +118,7 @@ export const updateQuestionSchema = z
       });
     }
 
-    // If type explicitly radio, min/max must be 1 if provided
+    
     if (v.type === "radio") {
       if (v.minChoices !== undefined && v.minChoices !== 1) {
         ctx.addIssue({
@@ -165,5 +152,3 @@ export type UpdateFormDTO = z.infer<typeof updateFormSchema>;
 export type PublishFormDTO = z.infer<typeof publishFormSchema>;
 export type AddQuestionDTO = z.infer<typeof addQuestionSchema>;
 export type AddOptionDTO = z.infer<typeof addOptionSchema>;
-export type ReorderQuestionsDTO = z.infer<typeof reorderQuestionsSchema>;
-export type ReorderOptionsDTO = z.infer<typeof reorderOptionsSchema>;
