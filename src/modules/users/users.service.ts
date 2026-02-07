@@ -28,31 +28,36 @@ export class UsersService {
     return user;
   }
 
-  async listUsers() {
+  async listUsers({ skip, take, page, pageSize }: { skip: number; take: number; page: number; pageSize: number }) {
+    const cacheKey = `users:list:p${page}:s${pageSize}`;
 
-    let cacheKey = `users:list`;
-    
     const cached = await getCachedData(cacheKey);
     if (cached) return cached;
 
-    let users;
+    const [data, total] = await Promise.all([
+      prisma.user.findMany({
+        skip,
+        take,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          provider: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.user.count(),
+    ]);
 
-    users = await prisma.user.findMany({
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        provider: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-    
-    await cacheData(cacheKey, users, 160);
-    return users;
+    const result = { data, total };
+
+    await cacheData(cacheKey, result, 160);
+    return result;
   }
+
 
   async update(id: string, data: UpdateUserInput) {
     if (!data || Object.keys(data).length === 0) {

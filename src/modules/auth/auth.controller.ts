@@ -3,12 +3,7 @@ import { env } from "../../config/env.js";
 import { authService } from "./auth.service.js";
 import type { LoginDTO, RegisterDTO, GoogleAuthDTO, RefreshDTO, LogoutDTO } from "./auth.schemas.js";
 import { unauthorized } from "../../utils/httpError.js";
-
-type SuccessResponse<T> = {
-  success: true;
-  data: T;
-  message?: string;
-};
+import { SuccessResponse } from "../../utils/response.js";
 
 function cookieBaseOptions() {
   const isProd = env.NODE_ENV === "production";

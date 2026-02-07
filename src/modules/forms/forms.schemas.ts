@@ -28,6 +28,31 @@ export const publishFormSchema = z
 
 export const questionTypeSchema = z.enum(["text", "checkbox", "radio"]);
 
+
+export const addOptionSchema = z
+  .object({
+    label: z.string().min(1).max(500).transform((v) => v.trim()),
+    value: z.string().min(1).max(200).transform((v) => v.trim()),
+    orderIndex: z.number().int().min(0).optional().default(0),
+  })
+  .strict();
+
+
+export const updateOptionSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    label: z.string().min(1).max(500).optional().transform((v) => (v ? v.trim() : v)),
+    value: z.string().min(1).max(200).optional().transform((v) => (v ? v.trim() : v)),
+    orderIndex: z.number().int().min(0).optional(),
+  })
+  .strict();
+
+const newOptionSchema = z.object({
+  label: z.string().min(1).max(500).transform((v) => v.trim()),
+  value: z.string().min(1).max(200).transform((v) => v.trim()),
+  orderIndex: z.number().int().min(0),
+});
+
 export const addQuestionSchema = z
   .object({
     prompt: z.string().min(1).max(2000).transform((v) => v.trim()),
@@ -36,6 +61,7 @@ export const addQuestionSchema = z
     orderIndex: z.number().int().min(0).optional().default(0),
     minChoices: z.number().int().min(0).optional(),
     maxChoices: z.number().int().min(0).optional(),
+    optionsToAdd: z.array(newOptionSchema).optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -79,14 +105,6 @@ export const addQuestionSchema = z
     }
   });
 
-export const addOptionSchema = z
-  .object({
-    label: z.string().min(1).max(500).transform((v) => v.trim()),
-    value: z.string().min(1).max(200).transform((v) => v.trim()),
-    orderIndex: z.number().int().min(0).optional().default(0),
-  })
-  .strict();
-
 export const updateQuestionSchema = z
   .object({
     prompt: z.string().min(1).max(2000).optional().transform((v) => (v ? v.trim() : v)),
@@ -95,20 +113,10 @@ export const updateQuestionSchema = z
     orderIndex: z.number().int().min(0).optional(),
     minChoices: z.number().int().min(0).optional(),
     maxChoices: z.number().int().min(0).optional(),
+    optionsToAdd: z.array(newOptionSchema).optional(),
   })
   .strict()
   .superRefine((v, ctx) => {
-    
-    if (v.type === "text") {
-      if (v.minChoices !== undefined || v.maxChoices !== undefined) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "minChoices/maxChoices are not allowed for text questions",
-          path: ["minChoices"],
-        });
-      }
-    }
-
     
     if (v.minChoices !== undefined && v.maxChoices !== undefined && v.minChoices > v.maxChoices) {
       ctx.addIssue({
@@ -117,33 +125,7 @@ export const updateQuestionSchema = z
         path: ["minChoices"],
       });
     }
-
-    
-    if (v.type === "radio") {
-      if (v.minChoices !== undefined && v.minChoices !== 1) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "radio questions must have minChoices = 1",
-          path: ["minChoices"],
-        });
-      }
-      if (v.maxChoices !== undefined && v.maxChoices !== 1) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "radio questions must have maxChoices = 1",
-          path: ["maxChoices"],
-        });
-      }
-    }
   });
-
-export const updateOptionSchema = z
-  .object({
-    label: z.string().min(1).max(500).optional().transform((v) => (v ? v.trim() : v)),
-    value: z.string().min(1).max(200).optional().transform((v) => (v ? v.trim() : v)),
-    orderIndex: z.number().int().min(0).optional(),
-  })
-  .strict();
 
 export type UpdateQuestionDTO = z.infer<typeof updateQuestionSchema>;
 export type UpdateOptionDTO = z.infer<typeof updateOptionSchema>;

@@ -10,7 +10,22 @@ import type {
   UpdateOptionDTO,
   UpdateQuestionDTO,
 } from "./forms.schemas.js";
-import { cacheData, getCachedData, deleteCacheKeys } from "../../utils/redis.js";
+import { cacheData, getCachedData, deleteCacheKeys, deleteCacheByPattern } from "../../utils/redis.js";
+import { normalizeQuestionUpdate } from "./helpers/normalizeQuestionUpdate.js";
+import { addQuestionOptions } from "./helpers/addQuestionOptions.js";
+
+type PageArgs = { skip: number; take: number; page: number; pageSize: number };
+
+const formSelect = {
+  id: true,
+  ownerUserId: true,
+  title: true,
+  description: true,
+  isPublished: true,
+  publishedAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 function canManageForm(role: UserRole): boolean {
   return role === "admin" || role === "creator";
@@ -24,16 +39,7 @@ async function assertCanAccessForm(params: {
 }) {
   const form = await prisma.form.findUnique({
     where: { id: params.formId },
-    select: {
-      id: true,
-      ownerUserId: true,
-      isPublished: true,
-      publishedAt: true,
-      title: true,
-      description: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: formSelect,
   });
 
   if (!form) throw notFound("Form not found");
@@ -64,89 +70,52 @@ export class FormsService {
         isPublished: false,
         publishedAt: null,
       },
-      select: {
-        id: true,
-        ownerUserId: true,
-        title: true,
-        description: true,
-        isPublished: true,
-        publishedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: formSelect,
     });
-
-
-    await deleteCacheKeys([
-      "forms:list:role=admin",
-      `forms:list:role=creator:user=${userId}`,
-      "forms:list:role=common",
-    ]);
+    
+    await deleteCacheByPattern("forms:list:*");
 
     return form;
   }
 
-async listForUser(userId: string, role: UserRole) {
-  let cacheKey = `forms:list:role=${role}`;
+  async listForUser(userId: string, role: UserRole, pageArgs: PageArgs) {
+    const { skip, take, page, pageSize } = pageArgs;
 
-  if (role === "creator") {
-    cacheKey += `:user=${userId}`;
+    let cacheKey = `forms:list:role=${role}:p${page}:s${pageSize}`;
+    if (role === "creator") cacheKey += `:user=${userId}`;
+
+    const cached = await getCachedData(cacheKey);
+    if (cached) return cached as { data: any[]; total: number };
+
+    const where =
+      role === "creator"
+        ? { ownerUserId: userId }
+        : role === "common"
+          ? { isPublished: true }
+          : {}; 
+
+    const orderBy =
+      role === "common"
+        ? [{ publishedAt: "desc" as const }]
+        : [{ createdAt: "desc" as const }];
+
+    const [data, total] = await Promise.all([
+      prisma.form.findMany({
+        where,
+        skip,
+        take,
+        orderBy,
+        select: formSelect,
+      }),
+      prisma.form.count({ where }),
+    ]);
+
+    const result = { data, total };
+    await cacheData(cacheKey, result, 160);
+
+    return result;
   }
 
-  const cached = await getCachedData(cacheKey);
-  if (cached) return cached;
-
-  let forms: any[] = [];
-
-  if (role === "admin") {
-    forms = await prisma.form.findMany({
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        ownerUserId: true,
-        title: true,
-        description: true,
-        isPublished: true,
-        publishedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-  } else if (role === "creator") {
-    forms = await prisma.form.findMany({
-      where: { ownerUserId: userId },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        ownerUserId: true,
-        title: true,
-        description: true,
-        isPublished: true,
-        publishedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-  } else {
-    forms = await prisma.form.findMany({
-      where: { isPublished: true },
-      orderBy: { publishedAt: "desc" },
-      select: {
-        id: true,
-        ownerUserId: true,
-        title: true,
-        description: true,
-        isPublished: true,
-        publishedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-  }
-
-  await cacheData(cacheKey, forms, 160);
-  return forms;
-}
 
 
   async getById(formId: string, userId: string, role: UserRole) {
@@ -157,7 +126,7 @@ async listForUser(userId: string, role: UserRole) {
     const cacheKey = `form:${formId}`;
 
     const cachedForm = await getCachedData(cacheKey);
-    if (cachedForm && cacheKey) {
+    if (cachedForm && cacheKey && cacheKey != ``) {
       return cachedForm;
     }
 
@@ -203,6 +172,7 @@ async listForUser(userId: string, role: UserRole) {
     if (!full) throw notFound("Form not found");
     
     await cacheData(cacheKey, full);
+    
 
     return includeAllForManager ? full : full;
   }
@@ -230,12 +200,8 @@ async listForUser(userId: string, role: UserRole) {
       },
     });
 
-    await deleteCacheKeys([
-      "forms:list:role=admin",
-      `forms:list:role=creator:user=${updated.ownerUserId}`,
-      `form:${formId}`,
-      "forms:list:role=common",
-    ]);
+    await deleteCacheKeys([`form:${formId}`]);
+    await deleteCacheByPattern("forms:list:*");
 
     return updated;
   }
@@ -263,12 +229,8 @@ async listForUser(userId: string, role: UserRole) {
       },
     });
 
-    await deleteCacheKeys([
-      "forms:list:role=admin",
-      `forms:list:role=creator:user=${updated.ownerUserId}`,
-      "forms:list:role=common",
-      `form:${formId}`,
-    ]);
+    await deleteCacheKeys([`form:${formId}`]);
+    await deleteCacheByPattern("forms:list:*");
 
     return updated;
   }
@@ -281,12 +243,10 @@ async listForUser(userId: string, role: UserRole) {
 
     await prisma.form.delete({ where: { id: form.id } });
 
-    await deleteCacheKeys([
-      "forms:list:role=admin",
-      `forms:list:role=creator:user=${userId}`,
-      "forms:list:role=common",
-      `form:${formId}`,
-    ]);
+
+
+    await deleteCacheKeys([`form:${formId}`]);
+    await deleteCacheByPattern("forms:list:*");
 
     return { id: form.id };
   }
@@ -296,44 +256,88 @@ async listForUser(userId: string, role: UserRole) {
 
     const form = await assertCanAccessForm({ formId, userId, role });
 
-    if(dto.type === "text") {
-      dto.maxChoices = undefined;
-      dto.minChoices = undefined;
+    const isText = dto.type === "text";
+    const optionsToAdd = dto.optionsToAdd ?? [];
+
+    if (isText && optionsToAdd.length) {
+      throw badRequest("Text questions do not have options");
     }
 
-    const q = await prisma.question.create({
-      data: {
-        formId: form.id,
-        prompt: dto.prompt,
-        type: dto.type,
-        isRequired: dto.isRequired,
-        orderIndex: dto.orderIndex,
-        minChoices: dto.type === "text" ? null : (dto.minChoices ?? null),
-        maxChoices: dto.type === "text" ? null : (dto.maxChoices ?? null),
-      },
-      select: {
-        id: true,
-        formId: true,
-        prompt: true,
-        type: true,
-        isRequired: true,
-        orderIndex: true,
-        minChoices: true,
-        maxChoices: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+    const created = await prisma.$transaction(async (tx) => {
+      const q = await tx.question.create({
+        data: {
+          formId: form.id,
+          prompt: dto.prompt,
+          type: dto.type,
+          isRequired: dto.isRequired ?? false,
+          orderIndex: dto.orderIndex ?? 0,
+          minChoices: isText ? null : (dto.minChoices ?? null),
+          maxChoices: isText ? null : (dto.maxChoices ?? null),
+        },
+        select: {
+          id: true,
+          formId: true,
+          prompt: true,
+          type: true,
+          isRequired: true,
+          orderIndex: true,
+          minChoices: true,
+          maxChoices: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (!isText && optionsToAdd.length) {
+        await tx.questionOption.createMany({
+          data: optionsToAdd.map((o) => ({
+            questionId: q.id,
+            label: o.label,
+            value: o.value,
+            orderIndex: o.orderIndex,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      // return with options (same shape as updateQuestion)
+      const full = await tx.question.findUnique({
+        where: { id: q.id },
+        select: {
+          id: true,
+          formId: true,
+          prompt: true,
+          type: true,
+          isRequired: true,
+          orderIndex: true,
+          minChoices: true,
+          maxChoices: true,
+          createdAt: true,
+          updatedAt: true,
+          options: {
+            orderBy: { orderIndex: "asc" },
+            select: {
+              id: true,
+              questionId: true,
+              label: true,
+              value: true,
+              orderIndex: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+      
+      return full!;
     });
 
-    const n = await deleteCacheKeys([
-      "forms:list:role=admin",
-      `forms:list:role=creator:user=${userId}`,
-      "forms:list:role=common",
-      `form:${formId}`,
-    ]);
+    await deleteCacheKeys([`form:${formId}`]);
+    await deleteCacheByPattern("forms:list:*");
 
-    return q;
+    return created;
   }
+
 
   async addOption(questionId: string, userId: string, role: UserRole, dto: AddOptionDTO) {
     if (!canManageForm(role)) throw forbidden("Only admin/creator can add options");
@@ -366,15 +370,14 @@ async listForUser(userId: string, role: UserRole) {
       },
     });
 
-    await deleteCacheKeys([
-      "forms:list:role=admin",
-      `forms:list:role=creator:user=${userId}`,
-      "forms:list:role=common",
-      `forms:${question.formId}`,
-    ]);
+    
+
+    await deleteCacheKeys([`form:${question.formId}`]);
+    await deleteCacheByPattern("forms:list:*");
 
     return opt;
   }
+
 
   async updateQuestion(questionId: string, userId: string, role: UserRole, dto: UpdateQuestionDTO) {
     if (!canManageForm(role)) throw forbidden("Only admin/creator can edit questions");
@@ -382,49 +385,31 @@ async listForUser(userId: string, role: UserRole) {
 
     const question = await prisma.question.findUnique({
       where: { id: questionId },
-      select: {
-        id: true,
-        formId: true,
-        type: true,
-      },
+      select: { id: true, formId: true, type: true },
     });
     if (!question) throw notFound("Question not found");
 
     await assertCanAccessForm({ formId: question.formId, userId, role });
 
-    const nextType = dto.type ?? question.type;
+    const { nextType, data, shouldDeleteOptions } = normalizeQuestionUpdate(question.type, dto);
 
-    const isText = nextType === "text";
-
-    if (nextType === "radio") {
-      if (dto.minChoices !== undefined && dto.minChoices !== 1) throw badRequest("radio questions must have minChoices = 1");
-      if (dto.maxChoices !== undefined && dto.maxChoices !== 1) throw badRequest("radio questions must have maxChoices = 1");
-    }
-
-    if (isText && (dto.minChoices !== undefined || dto.maxChoices !== undefined)) {
-      throw badRequest("minChoices/maxChoices are not allowed for text questions");
+    const optionsToAdd = dto.optionsToAdd ?? [];
+    if (nextType === "text" && optionsToAdd.length) {
+      throw badRequest("Text questions do not have options");
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-
-      if (isText) {
+      if (shouldDeleteOptions) {
         await tx.questionOption.deleteMany({ where: { questionId } });
+      }
+
+      if (!shouldDeleteOptions && optionsToAdd.length) {
+        await addQuestionOptions(tx, questionId, optionsToAdd);
       }
 
       const q = await tx.question.update({
         where: { id: questionId },
-        data: {
-          ...(dto.prompt !== undefined ? { prompt: dto.prompt } : {}),
-          ...(dto.type !== undefined ? { type: dto.type } : {}),
-          ...(dto.isRequired !== undefined ? { isRequired: dto.isRequired } : {}),
-          ...(dto.orderIndex !== undefined ? { orderIndex: dto.orderIndex } : {}),
-          ...(isText
-            ? { minChoices: null, maxChoices: null }
-            : {
-                ...(dto.minChoices !== undefined ? { minChoices: dto.minChoices } : {}),
-                ...(dto.maxChoices !== undefined ? { maxChoices: dto.maxChoices } : {}),
-              }),
-        },
+        data,
         select: {
           id: true,
           formId: true,
@@ -451,18 +436,16 @@ async listForUser(userId: string, role: UserRole) {
         },
       });
 
-      await deleteCacheKeys([
-        "forms:list:role=admin",
-        `forms:list:role=creator:user=${userId}`,
-        "forms:list:role=common",
-        `forms:${question.formId}`,
-      ]);
+
+    await deleteCacheKeys([`form:${question.formId}`]);
+    await deleteCacheByPattern("forms:list:*");
 
       return q;
     });
 
     return updated;
   }
+
 
   async deleteQuestion(questionId: string, userId: string, role: UserRole) {
     if (!canManageForm(role)) throw forbidden("Only admin/creator can delete questions");
@@ -477,12 +460,10 @@ async listForUser(userId: string, role: UserRole) {
 
     await prisma.question.delete({ where: { id: questionId } });
 
-    await deleteCacheKeys([
-      "forms:list:role=admin",
-      `forms:list:role=creator:user=${userId}`,
-      "forms:list:role=common",
-      `forms:${question.formId}`,
-    ]);
+
+
+    await deleteCacheKeys([`form:${question.formId}`]);
+    await deleteCacheByPattern("forms:list:*");
 
     return { id: questionId };
   }
@@ -524,12 +505,10 @@ async listForUser(userId: string, role: UserRole) {
         },
       });
 
-      await deleteCacheKeys([
-        "forms:list:role=admin",
-        `forms:list:role=creator:user=${userId}`,
-        "forms:list:role=common",
-        `forms:${opt.question.formId}`,
-      ]);
+
+
+    await deleteCacheKeys([`form:${opt.question.formId}`]);
+    await deleteCacheByPattern("forms:list:*");
 
       return updated;
     } catch (e: any) {
@@ -555,12 +534,8 @@ async listForUser(userId: string, role: UserRole) {
 
     await prisma.questionOption.delete({ where: { id: optionId } });
 
-    await deleteCacheKeys([
-      "forms:list:role=admin",
-      `forms:list:role=creator:user=${userId}`,
-      "forms:list:role=common",
-      `forms:${opt.question.formId}`,
-    ]);
+    await deleteCacheKeys([`form:${opt.question.formId}`]);
+    await deleteCacheByPattern("forms:list:*");
 
     return { id: optionId };
   }

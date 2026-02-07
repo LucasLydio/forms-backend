@@ -2,8 +2,7 @@ import type { Request, Response } from "express";
 import type { UserRole } from "../../utils/jwt.js";
 import { submissionsService } from "./submissions.service.js";
 import type { UpsertAnswerDTO, UpsertAnswersDTO } from "./submissions.schemas.js";
-
-type SuccessResponse<T> = { success: true; data: T; message?: string };
+import { SuccessResponse } from "../../utils/response.js";
 
 export class SubmissionsController {
   start = async (req: Request, res: Response) => {

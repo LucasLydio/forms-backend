@@ -1,11 +1,7 @@
 import type { Request, Response } from "express";
 import { usersService } from "./users.service.js";
-
-type SuccessResponse<T> = {
-  success: true;
-  data: T;
-  message?: string;
-};
+import { SuccessResponse } from "../../utils/response.js";
+import { pagination } from "../../utils/pagination.js";
 
 export class UsersController {
   me = async (req: Request, res: Response) => {
@@ -20,16 +16,27 @@ export class UsersController {
     return res.status(200).json(payload);
   };
 
-  list = async (_req: Request, res: Response) => {
-    const users = await usersService.listUsers();
+list = async (req: Request, res: Response) => {
+  const { page, pageSize, skip, take } = pagination(req.query.page, req.query.pageSize);
 
-    const payload: SuccessResponse<typeof users> = {
-      success: true,
-      data: users,
-    };
+  const { data, total } = await usersService.listUsers({ skip, take, page, pageSize });
 
-    return res.status(200).json(payload);
+  const payload: SuccessResponse<typeof data> = {
+    success: true,
+    data,
+    meta: {
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    },
   };
+
+  return res.status(200).json(payload);
+};
+
 
   update = async (req: Request, res: Response) => {
     const { id } = req.params as { id: string };
